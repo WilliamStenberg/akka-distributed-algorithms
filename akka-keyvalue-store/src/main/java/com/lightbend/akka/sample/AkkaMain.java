@@ -26,8 +26,10 @@ public class AkkaMain {
      * Notify each process in a list of all processes
      */
     private static void sendListMessages(ArrayList<ActorRef> refList) {
-        ListMessage listMsg = new ListMessage(refList);
+        int i = 0;
         for (ActorRef ref : refList) {
+            ListMessage listMsg = new ListMessage(i, refList);
+            i++;
             ref.tell(listMsg, ActorRef.noSender());
         }
     }
