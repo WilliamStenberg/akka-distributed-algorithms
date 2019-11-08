@@ -6,7 +6,10 @@ import akka.actor.ActorRef;
 import akka.event.Logging;
 import akka.event.LoggingAdapter;
 import java.util.ArrayList;
+import java.util.ListIterator;
 import java.util.List;
+
+import java.lang.System;
 
 
 public class Process extends UntypedAbstractActor{
@@ -17,13 +20,12 @@ public class Process extends UntypedAbstractActor{
     private List<ActorRef> savedList;
     private List<Quorum> quora;
 
-    private boolean is_failed;
+    private boolean isFailed;
     private int pid;
 
     private int value = 0;
-    private int read_seq= 0;
-    private int write_seq = 0;
-    private int quorum_seq = 0;
+    private int readSeq= 0;
+    private int writeSeq = 0;
 
 	// Static function creating actor
 	public static Props createActor() {
@@ -32,17 +34,41 @@ public class Process extends UntypedAbstractActor{
 		});
 	}
 
-    private void log(final String msg) {
-        logger.info("["+getSelf().path().name()+"] rec msg from ["+ getSender().path().name() +"]:\n\t["+msg+"]");
+    public int getPid() {
+        return this.pid;
+    }
+
+    private void log(String msg) {
+        //logger.info("["+getSelf().path().name()+"] rec msg from ["+ getSender().path().name() +"]:\n\t["+msg+"]");
+    }
+
+    private void formLog(boolean sending, String type, int ack, int seq, String otherActor) {
+        String ackStr = ack < 0 ? "" : String.valueOf(ack);
+        String[] actors = new String[2];
+        // Determining actor order in the log string
+        if (sending) {
+            actors[0] = getSelf().path().name();
+            actors[1] = otherActor;
+        } else {
+            actors[0] = otherActor;
+            actors[1] = getSelf().path().name();
+        }
+
+        logger.info("###"+actors[0]+","+actors[1]+","+type+","+ackStr+","+seq+","+this.value+","+System.nanoTime());
     }
 
     private void get() {
         // Start a new quorum poll
-        Quorum q = new Quorum(this.quorum_seq, this.pid);
-        this.quora.add(q);
-        this.quorum_seq++;
         // Send out messages referencing this poll
         // TODO: QueryMessage
+        this.readSeq++;
+        Quorum q = new Quorum(this.readSeq, this.pid);
+        this.quora.add(q);
+        PollMessage poll = new PollMessage(this.readSeq);
+        for (ActorRef ref : this.savedList) {
+            ref.tell(poll, getSelf());
+            formLog(true, "poll", -1, this.readSeq, ref.path().name());
+        }
 
         // Quorum will receive messages and decide final result
 
@@ -69,10 +95,32 @@ public class Process extends UntypedAbstractActor{
             this.quora = new ArrayList<>();
             log("List of " + this.savedList.size() + " actors");
         } else if (message instanceof LaunchMessage) {
-            this.is_failed = ((LaunchMessage)message).failed;
-            log("Launched! Fail: " + this.is_failed);
-            if (! this.is_failed) {
+            this.isFailed = ((LaunchMessage)message).failed;
+            log("Launched! Fail: " + this.isFailed);
+            if (! this.isFailed) {
                 this.run();
+            }
+        } else if (message instanceof PollMessage) {
+            log("Returning");
+            PollMessage pollMsg = (PollMessage)message;
+            formLog(false, "poll", pollMsg.ack, this.readSeq, getSender().path().name());
+            PollResponseMessage resp = new PollResponseMessage(pollMsg.ack, this.readSeq, this.value, this.pid);
+            formLog(true, "pollresp", pollMsg.ack, this.readSeq, getSender().path().name());
+            getSender().tell(resp, getSelf());
+        } else if (message instanceof PollResponseMessage) {
+            PollResponseMessage pollResp = (PollResponseMessage)message;
+            ListIterator<Quorum> li = this.quora.listIterator();
+            while (li.hasNext()) {
+                Quorum q = li.next();
+                if (pollResp.ack == q.qid) {
+                    q.vote(pollResp.pid, pollResp.seq, pollResp.value);
+                    if (q.isDecisive()) {
+                        this.readSeq = q.decideSeq();
+                        this.value = q.decideValue();
+                        li.remove();
+                    }
+                }
+            formLog(false, "pollresp", pollResp.ack, this.readSeq, getSender().path().name());
             }
         } else {
             log("Message unrecognized");

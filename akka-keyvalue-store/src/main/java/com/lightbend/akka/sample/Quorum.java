@@ -32,7 +32,11 @@ public class Quorum {
         return this.voteCount > THRESH;
     }
 
-    public int decide() {
+    public int decideValue() {
         return bestValue;
+    }
+
+    public int decideSeq() {
+        return bestSeq;
     }
 }

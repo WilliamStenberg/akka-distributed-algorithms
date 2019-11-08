@@ -8,7 +8,7 @@ import java.util.List;
 
 public final class AkkaMain {
     
-    final static int NumActors = 10;
+    final static int NumActors = 3;
     /** This class shouldn't be instantiated */
     private AkkaMain() {}
 
