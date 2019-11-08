@@ -6,28 +6,24 @@ import akka.actor.ActorRef;
 import akka.event.Logging;
 import akka.event.LoggingAdapter;
 import java.util.ArrayList;
+import java.util.List;
 
-import com.lightbend.akka.sample.ListMessage;
-import com.lightbend.akka.sample.LaunchMessage;
-import com.lightbend.akka.sample.Quorum;
 
 public class Process extends UntypedAbstractActor{
 
 	// Logger attached to actor
 	private final LoggingAdapter logger = Logging.getLogger(getContext().getSystem(), this);
 
-    private ArrayList<ActorRef> savedList;
-    private ArrayList<Quorum> quora;
+    private List<ActorRef> savedList;
+    private List<Quorum> quora;
 
     private boolean is_failed;
     private int pid;
 
-    private int value;
+    private int value = 0;
     private int read_seq= 0;
     private int write_seq = 0;
     private int quorum_seq = 0;
-
-	public Process() {}
 
 	// Static function creating actor
 	public static Props createActor() {

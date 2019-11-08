@@ -22,13 +22,13 @@ public class Quorum {
 
     public void vote(int voterid, int seq, int value) {
         this.voteCount++;
-        if ((seq == this.bestSeq && voterid > this.pid) || (seq > bestSeq)) {
+        if (seq == this.bestSeq && voterid > this.pid || seq > bestSeq) {
             bestSeq = seq;
             bestValue = value;
         }
     }
 
-    public boolean is_decisive() {
+    public boolean isDecisive() {
         return this.voteCount > THRESH;
     }
 
