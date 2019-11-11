@@ -8,7 +8,8 @@ import java.util.List;
 
 public final class AkkaMain {
     
-    final static int NumActors = 3;
+    public final static int NumActors = 3;
+    public final static int f = 1;
     /** This class shouldn't be instantiated */
     private AkkaMain() {}
 
@@ -41,7 +42,7 @@ public final class AkkaMain {
      */
     private static void sendLaunchMessages(List<ActorRef> refList) {
         for (ActorRef ref : refList) {
-            boolean failed = Math.random() > 0.7;
+            boolean failed = false; // TODO Use collections shuffle
             LaunchMessage launchMsg = new LaunchMessage(failed);
             ref.tell(launchMsg, ActorRef.noSender());
         } 

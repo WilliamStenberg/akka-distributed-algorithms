@@ -1,7 +1,6 @@
 package com.lightbend.akka.sample;
 
 public class Quorum {
-    private static final int THRESH = 5;
 
     // These are changed by votes
     private int bestSeq = -1;
@@ -29,7 +28,7 @@ public class Quorum {
     }
 
     public boolean isDecisive() {
-        return this.voteCount > THRESH;
+        return this.voteCount > AkkaMain.NumActors / 2;
     }
 
     public int decideValue() {
