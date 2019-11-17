@@ -5,8 +5,14 @@ import akka.actor.UntypedAbstractActor;
 import akka.actor.ActorRef;
 import akka.event.Logging;
 import akka.event.LoggingAdapter;
-import java.util.ArrayList;
+import akka.pattern.Patterns;
+
 import java.util.List;
+import java.util.concurrent.TimeUnit;
+import scala.concurrent.Await;
+import scala.concurrent.Future;
+import scala.concurrent.duration.Duration;
+import scala.concurrent.duration.FiniteDuration;
 
 import java.lang.System;
 
@@ -57,20 +63,28 @@ public class Process extends UntypedAbstractActor{
     }
 
     private void get() {
-        // Start a new quorum poll
-        // Send out messages referencing this poll
-        // TODO: QueryMessage
-        System.out.println("In get");
         this.readSeq++;
-        this.quorum = new Quorum(this.readSeq, this.pid);
+        // TODO REFACTOR
+        this.quorum = null; //new QuorumMech(this.readSeq, this.pid);
+
         PollMessage poll = new PollMessage(this.readSeq);
         for (ActorRef ref : this.savedList) {
             ref.tell(poll, getSelf());
-            System.out.println("S");
             formLog(true, "startpoll", -1, this.readSeq, ref.path().name());
         }
-        if (this.quorum.isDecisive()) {
+        String name = "p" + this.pid + "q" + this.readSeq;
+        ActorRef quorumRef = getContext().getSystem().actorOf(Quorum.createActor(), name);
+        FiniteDuration duration = Duration.create(1000, TimeUnit.MILLISECONDS);
+        Future<Object> future = Patterns.ask(quorumRef, new StartQuorumMessage(this.pid, this.readSeq, getSelf(), this.savedList), 1000);
+        try {
+            DecideQuorumMessage result = (DecideQuorumMessage) Await.result(future, duration);
+            this.value = result.getValue();
+            this.readSeq = result.getSeq();
+            formLog(true, "set", result.ackSeq, this.readSeq, getSelf().path().name());
+        } catch (Exception ex) {
+            System.err.println("Bad await result");
         }
+
     }
 
     private void put(int value) {
@@ -92,30 +106,18 @@ public class Process extends UntypedAbstractActor{
             this.pid = m.pid;
             this.savedList = m.getList();
             log("List of " + this.savedList.size() + " actors");
-        } else if (message instanceof LaunchMessage) {
-            this.isFailed = ((LaunchMessage)message).failed;
-            log("Launched! Fail: " + this.isFailed);
-            if (! this.isFailed) {
-                this.run();
-            }
+
         } else if (message instanceof PollMessage) {
             PollMessage pollMsg = (PollMessage)message;
             formLog(true, "poll", pollMsg.ack, this.readSeq, getSender().path().name());
             PollResponseMessage resp = new PollResponseMessage(pollMsg.ack, this.readSeq, this.value, this.pid);
             formLog(true, "pollresp", pollMsg.ack, this.readSeq, getSender().path().name());
             getSender().tell(resp, getSelf());
-        } else if (message instanceof PollResponseMessage) {
-            PollResponseMessage pollResp = (PollResponseMessage)message;
-            formLog(false, "vote", pollResp.ack, this.readSeq, getSender().path().name());
-            if (null != this.quorum && pollResp.ack == this.quorum.qid) {
-                log("Voting");
-                this.quorum.vote(pollResp.pid, pollResp.seq, pollResp.value);
-                if (this.quorum.isDecisive()) {
-                    this.value = this.quorum.decideValue();
-                    this.readSeq = this.quorum.decideSeq();
-                    formLog(true, "set", pollResp.ack, this.readSeq, getSender().path().name());
-                    this.quorum = null;
-                }
+        } else if (message instanceof LaunchMessage) {
+            this.isFailed = ((LaunchMessage)message).failed;
+            log("Launched! Fail: " + this.isFailed);
+            if (! this.isFailed) {
+                this.run();
             }
         } else {
             log("Message unrecognized");

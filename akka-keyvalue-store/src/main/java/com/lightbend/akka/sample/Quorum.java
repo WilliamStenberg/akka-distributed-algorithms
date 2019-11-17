@@ -1,22 +1,45 @@
 package com.lightbend.akka.sample;
 
-public class Quorum {
+import akka.actor.ActorRef;
+import akka.actor.Props;
+import akka.actor.UntypedAbstractActor;
+import akka.event.Logging;
+import akka.event.LoggingAdapter;
+import akka.pattern.Patterns;
+import scala.concurrent.Await;
+import scala.concurrent.Future;
+import scala.concurrent.duration.Duration;
+import scala.concurrent.duration.FiniteDuration;
 
-    // These are changed by votes
-    private int bestSeq = -1;
-    private int bestValue = 0;
+import java.util.List;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
+
+public class Quorum extends UntypedAbstractActor{
+
+	// Logger attached to actor
+	private final LoggingAdapter logger = Logging.getLogger(getContext().getSystem(), this);
+
+    private int pid;
+    private int originalSeq;
     private int voteCount = 0;
+    private int bestValue = 0;
+    private int bestSeq = 0;
 
-    // ID to reference this poll
-    public final int qid;
+	// Static function creating actor
+	public static Props createActor() {
+		return Props.create(Quorum.class, () -> {
+			return new Quorum();
+		});
+	}
 
-    // ID of the governing process
-    public final int pid;
+    public int getPid() {
+        return this.pid;
+    }
 
-    public Quorum(int qid, int pid) {
-        this.qid = qid;
-        this.pid = pid;
+    private void log(String msg) {
+        logger.info("["+getSelf().path().name()+"] rec msg from ["+ getSender().path().name() +"]:\n\t["+msg+"]");
     }
 
     public void vote(int voterid, int seq, int value) {
@@ -35,7 +58,32 @@ public class Quorum {
         return bestValue;
     }
 
-    public int decideSeq() {
-        return bestSeq;
-    }
+    public int decideSeq() { return bestSeq; }
+
+	@Override
+	public void onReceive(Object message) throws Throwable {
+		if (message instanceof StartQuorumMessage) {
+            StartQuorumMessage m = (StartQuorumMessage) message;
+            this.pid = m.pid;
+            this.originalSeq = m.seqToAck;
+            PollMessage poll = new PollMessage(this.originalSeq);
+            for (ActorRef ref : m.getPopulation()) {
+                ref.tell(poll, getSelf());
+            }
+        } else if (message instanceof PollResponseMessage) {
+            PollResponseMessage pollResp = (PollResponseMessage)message;
+            // Skips out-dated responses
+            if (pollResp.ack == this.originalSeq) {
+                log("VOTING!");
+                this.vote(pollResp.pid, pollResp.seq, pollResp.value);
+                log(""+this.voteCount);
+                if (this.isDecisive()) {
+                    DecideQuorumMessage result = new DecideQuorumMessage(this.originalSeq, this.bestSeq, this.bestValue);
+                }
+            }
+        } else {
+            log("Message unrecognized");
+        }
+	}
+
 }
