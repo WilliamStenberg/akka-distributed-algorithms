@@ -23,7 +23,6 @@ public class Process extends UntypedAbstractActor{
 	private final LoggingAdapter logger = Logging.getLogger(getContext().getSystem(), this);
 
     private List<ActorRef> savedList;
-    private Quorum quorum = null;
 
     private boolean isFailed;
     private int pid;
@@ -34,9 +33,7 @@ public class Process extends UntypedAbstractActor{
 
 	// Static function creating actor
 	public static Props createActor() {
-		return Props.create(Process.class, () -> {
-			return new Process();
-		});
+		return Props.create(Process.class, Process::new);
 	}
 
     public int getPid() {
@@ -64,14 +61,7 @@ public class Process extends UntypedAbstractActor{
 
     private void get() {
         this.readSeq++;
-        // TODO REFACTOR
-        this.quorum = null; //new QuorumMech(this.readSeq, this.pid);
 
-        PollMessage poll = new PollMessage(this.readSeq);
-        for (ActorRef ref : this.savedList) {
-            ref.tell(poll, getSelf());
-            formLog(true, "startpoll", -1, this.readSeq, ref.path().name());
-        }
         String name = "p" + this.pid + "q" + this.readSeq;
         ActorRef quorumRef = getContext().getSystem().actorOf(Quorum.createActor(), name);
         FiniteDuration duration = Duration.create(1000, TimeUnit.MILLISECONDS);
@@ -92,7 +82,7 @@ public class Process extends UntypedAbstractActor{
 
     /**
      * Let the process operate, called when successfully launched.
-     * Will cann multiple read/write operations in iterations.
+     * Will call multiple read/write operations in iterations.
      */
     private void run() {
         this.get();
@@ -120,7 +110,7 @@ public class Process extends UntypedAbstractActor{
                 this.run();
             }
         } else {
-            log("Message unrecognized");
+            log("Message unrecognized: " + message.getClass().toString());
         }
 	}
 

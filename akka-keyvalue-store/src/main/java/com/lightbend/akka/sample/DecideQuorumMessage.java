@@ -1,10 +1,9 @@
 package com.lightbend.akka.sample;
 
 public class DecideQuorumMessage {
-    private int seq;
-    private int value;
-    public int ackSeq;
-
+    private final int seq;
+    private final int value;
+    public final int ackSeq;
 
     public DecideQuorumMessage(int ackSeq, int seq, int value) {
         this.ackSeq = ackSeq;

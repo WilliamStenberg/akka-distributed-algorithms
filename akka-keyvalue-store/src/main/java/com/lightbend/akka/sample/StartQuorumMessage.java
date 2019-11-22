@@ -5,9 +5,9 @@ import java.util.List;
 
 public class StartQuorumMessage {
     public final ActorRef ref;
-    public final List<ActorRef> population;
-    public int pid;
-    public int seqToAck;
+    private final List<ActorRef> population;
+    public final int pid;
+    public final int seqToAck;
     public StartQuorumMessage(int pid, int seq, ActorRef ref, List<ActorRef> population) {
         this.pid = pid;
         this.ref = ref;

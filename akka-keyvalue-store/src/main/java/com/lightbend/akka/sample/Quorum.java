@@ -5,15 +5,6 @@ import akka.actor.Props;
 import akka.actor.UntypedAbstractActor;
 import akka.event.Logging;
 import akka.event.LoggingAdapter;
-import akka.pattern.Patterns;
-import scala.concurrent.Await;
-import scala.concurrent.Future;
-import scala.concurrent.duration.Duration;
-import scala.concurrent.duration.FiniteDuration;
-
-import java.util.List;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 
 
 public class Quorum extends UntypedAbstractActor{
@@ -29,9 +20,7 @@ public class Quorum extends UntypedAbstractActor{
 
 	// Static function creating actor
 	public static Props createActor() {
-		return Props.create(Quorum.class, () -> {
-			return new Quorum();
-		});
+		return Props.create(Quorum.class, () -> new Quorum());
 	}
 
     public int getPid() {

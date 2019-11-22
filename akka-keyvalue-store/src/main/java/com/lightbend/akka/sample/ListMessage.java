@@ -10,9 +10,7 @@ public class ListMessage {
         this.pid = pid;
         // Cloning list by iterating
         this.list = new ArrayList<>();
-        for (ActorRef ref : list) {
-            this.list.add(ref);
-        }
+        this.list.addAll(list);
     }
 
     public List<ActorRef> getList() {
