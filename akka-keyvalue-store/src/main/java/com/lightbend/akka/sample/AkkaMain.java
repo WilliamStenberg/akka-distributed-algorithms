@@ -4,6 +4,7 @@ import akka.actor.ActorSystem;
 import akka.actor.ActorRef;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 public final class AkkaMain {
@@ -41,8 +42,14 @@ public final class AkkaMain {
      * Some will have their fail-flag set, simulating a failed process.
      */
     private static void sendLaunchMessages(List<ActorRef> refList) {
+        Collections.shuffle(refList);
+        int nFailed = 0;
         for (ActorRef ref : refList) {
-            boolean failed = false; // TODO Use collections shuffle
+            boolean failed = false;
+            if (nFailed < f) {
+                failed = true;
+                nFailed++;
+            }
             LaunchMessage launchMsg = new LaunchMessage(failed);
             ref.tell(launchMsg, ActorRef.noSender());
         } 
@@ -65,12 +72,12 @@ public final class AkkaMain {
         // send the list of references to each actor
         sendListMessages(refList);
 
-        pause("Press ENTER to continue");
+        //pause("Press ENTER to continue");
 
         // Prompting actors to start the circus
         sendLaunchMessages(refList);
 
-        pause("Press ENTER to exit");
+        //pause("Press ENTER to exit");
         system.terminate();
     }
 }

@@ -44,38 +44,66 @@ def import_log(filename) -> DataFrame:
 
 def parse_operations(df: DataFrame):
     # Messages starting a poll
-    pollstarts = df[df['type'] == 'startpoll'].groupby('from').min()
+    pollstarts = df[df['type'] == 'startpoll']
     fig = go.Figure()
+    legend_read_set = False
+    legend_vote_set = False
+    legend_poll_set = False
     for i, poll_start in pollstarts.iterrows():
-        poll_end = df[(df['type'] == 'set') & (df['ack'] == poll_start['seq']) & (df['from'] == poll_start.name)]
+        poll_end = df[(df['type'] == 'set') & (df['ack'] == poll_start['seq']) & (df['from'] == poll_start['from'])].iloc[0]
         start = poll_start['timestamp']
-        end = poll_end['timestamp'].iloc[0]
+        end = poll_end['timestamp']
         start_tuple = f'({poll_start["seq"]}, REQ)'
-        end_seq = poll_end['seq'].iloc[0]
-        end_val = poll_end['value'].iloc[0]
+        end_seq = poll_end['seq']
+        end_val = poll_end['value']
         end_tuple = f'({end_seq}, {end_val})'
         fig.add_trace(
                go.Scatter(
                    x=[start, end], 
-                   y=[poll_start.name]*2,  # extracting i
+                   y=[poll_start['from']]*2,  # extracting i
                    line=dict(color='black'),
                    hovertext=[start_tuple, end_tuple],
-                   hoverinfo='text'
+                   hoverinfo='text',
+                   showlegend=not legend_read_set,
+                   name='Read'
                    ))
-        responses = df[(df['type'] == 'poll') &
-                (df['to'] == poll_start.name) &
+        legend_read_set = True
+        poll_receivals= df[(df['type'] == 'poll') &
+                (df['to'] == poll_start['from']) &
                 (df['ack'] == poll_start['seq'])]
-        for _, row in responses.iterrows():
+
+        poll_votes= df[(df['type'] == 'vote') &
+                (df['from'] == poll_start['from']) &
+                (df['ack'] == poll_start['seq'])]
+        for i, row in poll_receivals.iterrows():
+
             fig.add_trace(
                    go.Scatter(
                        x=[start, row['timestamp']], 
-                       y=[poll_start.name, row['from']],  
-                       line=dict(color='grey'),
+                       y=[poll_start['from'], row['from']],  
+                       line=dict(color='orange'),
                        opacity=0.5,
-                       hoverinfo='skip'))
+                       hoverinfo='skip',
+                       showlegend=not legend_poll_set,
+                       name='Send poll'))
+            legend_poll_set = True
 
+            for _, vote in poll_votes[poll_votes['to'] == row['from']].iterrows():
+                fig.add_trace(
+                       go.Scatter(
+                           x=[row['timestamp'], vote['timestamp']], 
+                           y=[row['from'], vote['from']],  
+                           line=dict(color='blue'),
+                           opacity=0.5,
+                           hoverinfo='skip',
+                           showlegend=not legend_vote_set,
+                           name='Vote'))
+                legend_vote_set = True
 
     fig.update_layout(
+        title = 'Process activity for single read (N: 3, f: 1)',
+        xaxis_title = 'Time (ms)',
+        yaxis_title = 'Process identifier (i)',
         xaxis = dict(
             tickmode = 'linear',
             tick0 = 0,
