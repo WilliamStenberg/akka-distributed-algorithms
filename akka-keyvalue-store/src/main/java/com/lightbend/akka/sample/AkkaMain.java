@@ -10,7 +10,7 @@ import java.util.List;
 public final class AkkaMain {
     
     public final static int NumActors = 3;
-    public final static int f = 1;
+    public final static int NumFailed = 1;
     /** This class shouldn't be instantiated */
     private AkkaMain() {}
 
@@ -46,7 +46,7 @@ public final class AkkaMain {
         int nFailed = 0;
         for (ActorRef ref : refList) {
             boolean failed = false;
-            if (nFailed < f) {
+            if (nFailed < NumFailed) {
                 failed = true;
                 nFailed++;
             }

@@ -47,13 +47,11 @@ def parse_operations(df: DataFrame):
     pollstarts = df[df['type'] == 'startpoll']
     fig = go.Figure()
     legend_read_set = False
-    legend_vote_set = False
-    legend_poll_set = False
     for i, poll_start in pollstarts.iterrows():
         poll_end = df[(df['type'] == 'set') & (df['ack'] == poll_start['seq']) & (df['from'] == poll_start['from'])].iloc[0]
         start = poll_start['timestamp']
         end = poll_end['timestamp']
-        start_tuple = f'({poll_start["seq"]}, REQ)'
+        start_tuple = f'({poll_start["seq"]}, ?)'
         end_seq = poll_end['seq']
         end_val = poll_end['value']
         end_tuple = f'({end_seq}, {end_val})'
@@ -62,101 +60,43 @@ def parse_operations(df: DataFrame):
                    x=[start, end], 
                    y=[poll_start['from']]*2,  # extracting i
                    line=dict(color='black'),
-                   hovertext=[start_tuple, end_tuple],
-                   hoverinfo='text',
                    showlegend=not legend_read_set,
-                   name='Read'
+                   name='Read',
+                   mode='lines+text',
+                   textposition='top center',
+                   text=[start_tuple, end_tuple]
                    ))
         legend_read_set = True
-        poll_receivals= df[(df['type'] == 'poll') &
-                (df['to'] == poll_start['from']) &
-                (df['ack'] == poll_start['seq'])]
-
-        poll_votes= df[(df['type'] == 'vote') &
-                (df['from'] == poll_start['from']) &
-                (df['ack'] == poll_start['seq'])]
-        for i, row in poll_receivals.iterrows():
-
-            fig.add_trace(
-                   go.Scatter(
-                       x=[start, row['timestamp']], 
-                       y=[poll_start['from'], row['from']],  
-                       line=dict(color='orange'),
-                       opacity=0.5,
-                       hoverinfo='skip',
-                       showlegend=not legend_poll_set,
-                       name='Send poll'))
-            legend_poll_set = True
-
-            for _, vote in poll_votes[poll_votes['to'] == row['from']].iterrows():
-                fig.add_trace(
-                       go.Scatter(
-                           x=[row['timestamp'], vote['timestamp']], 
-                           y=[row['from'], vote['from']],  
-                           line=dict(color='blue'),
-                           opacity=0.5,
-                           hoverinfo='skip',
-                           showlegend=not legend_vote_set,
-                           name='Vote'))
-                legend_vote_set = True
-    pollstarts = df[df['type'] == 'startwrite']
-    legend_read_set = False
-    legend_vote_set = False
-    legend_poll_set = False
-    for i, poll_start in pollstarts.iterrows():
-        poll_end = df[(df['type'] == 'writeset') & (df['ack'] == poll_start['seq']) & (df['from'] == poll_start['from'])].iloc[0]
-        start = poll_start['timestamp']
-        end = poll_end['timestamp']
-        start_tuple = f'({poll_start["seq"]}, REQ)'
-        end_seq = poll_end['seq']
-        end_val = poll_end['value']
+    writestarts = df[df['type'] == 'startwrite']
+    legend_write_set = False
+    for i, write_start in writestarts.iterrows():
+        try:
+            write_end = df[(df['type'] == 'writeset') & (df['ack'] == write_start['seq']) & (df['from'] == write_start['from'])].iloc[0]
+        except:
+            print('Could not finish write, ')
+            print(write_start)
+            continue
+        start = write_start['timestamp']
+        end = write_end['timestamp']
+        start_tuple = f'({write_start["seq"]}, !)'
+        end_seq = write_end['seq']
+        end_val = write_end['value']
         end_tuple = f'({end_seq}, {end_val})'
         fig.add_trace(
                go.Scatter(
                    x=[start, end], 
-                   y=[poll_start['from']]*2,  # extracting i
+                   y=[write_start['from']]*2,  # extracting i
                    line=dict(color='red'),
-                   hovertext=[start_tuple, end_tuple],
-                   hoverinfo='text',
-                   showlegend=not legend_read_set,
+                   text=[start_tuple, end_tuple],
+                   textposition='bottom center',
+                   mode='lines+text',
+                   showlegend=not legend_write_set,
                    name='Write'
                    ))
-        legend_read_set = True
-        poll_receivals= df[(df['type'] == 'notify') &
-                (df['to'] == poll_start['from']) &
-                (df['ack'] == poll_start['seq'])]
-
-        poll_votes= df[(df['type'] == 'writeack') &
-                (df['from'] == poll_start['from']) &
-                (df['ack'] == poll_start['seq'])]
-        for i, row in poll_receivals.iterrows():
-
-            fig.add_trace(
-                   go.Scatter(
-                       x=[start, row['timestamp']], 
-                       y=[poll_start['from'], row['from']],  
-                       line=dict(color='green'),
-                       opacity=0.5,
-                       hoverinfo='skip',
-                       showlegend=not legend_poll_set,
-                       name='Write notice'))
-            legend_poll_set = True
-
-            for _, vote in poll_votes[poll_votes['to'] == row['from']].iterrows():
-                fig.add_trace(
-                       go.Scatter(
-                           x=[row['timestamp'], vote['timestamp']], 
-                           y=[row['from'], vote['from']],  
-                           line=dict(color='magenta'),
-                           opacity=0.5,
-                           hoverinfo='skip',
-                           showlegend=not legend_vote_set,
-                           name='Acknowledge write'))
-                legend_vote_set = True
-
-
+        legend_write_set = True
+        
     fig.update_layout(
-        title = 'Process activity for get operations (N: 10, f: 4)',
+        title = 'Process activity for get and put operations (N: 3, f: 1)',
         xaxis_title = 'Time (ms)',
         yaxis_title = 'Process identifier (i)',
         xaxis = dict(

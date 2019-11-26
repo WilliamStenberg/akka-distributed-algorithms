@@ -71,13 +71,19 @@ public class Process extends UntypedAbstractActor{
 	        this.operations.removeFirst();
             switch (op.opName) {
                 case "put":
+                    this.operations.addFirst(new Operation("guaranteedWrite", op.operand));
                     this.get();
-                    this.operations.addFirst(new Operation("putAfterGet", op.operand));
                     break;
-                case "putAfterGet":
+                case "guaranteedWrite":
                     this.put(op.operand);
                     break;
                 case "get":
+                    this.operations.addFirst(new Operation("notifyWrite", op.operand));
+                    this.get();
+                    break;
+                case "notifyWrite":
+                    this.put(this.value);
+                    break;
                 default:
                     this.get();
             }
@@ -91,7 +97,7 @@ public class Process extends UntypedAbstractActor{
 
         PollMessage poll = new PollMessage(this.readSeq);
         this.quorum = new Quorum(this.pid, this.readSeq);
-        this.quorum.vote(this.pid, this.readSeq-1, this.value);
+        this.quorum.vote(this.pid, this.readSeq, this.value);
         formLog(true, "startpoll", -1, this.readSeq, getSelf().path().name());
         for (ActorRef ref : this.savedList) {
             if (ref != getSelf())
@@ -119,35 +125,30 @@ public class Process extends UntypedAbstractActor{
      * Will call multiple read/write operations in iterations.
      */
     private void run() {
-        log("Running boy "+this.pid);
-        this.operations.add(new Operation("put", 100 + this.pid /* unused */));
+        this.operations.add(new Operation("put", 100 + this.pid));
+        this.operations.add(new Operation("get", -1 /* unused */));
         this.consumeOperation();
     }
 
 
 	@Override
 	public void onReceive(Object message) throws Throwable {
-
-		if (message instanceof ListMessage) {
+        if (this.isFailed) {
+            return;
+        }
+        if (message instanceof ListMessage) {
             ListMessage m = (ListMessage) message;
             this.pid = m.pid;
             this.savedList = m.getList();
-            log("List of " + this.savedList.size() + " actors");
 
         } else if (message instanceof PollMessage) {
             PollMessage pollMsg = (PollMessage)message;
-            formLog(true, "poll", pollMsg.ack, this.readSeq, getSender().path().name());
-
-            if (this.isFailed) {
-                return;
-            }
             PollResponseMessage resp = new PollResponseMessage(pollMsg.ack, this.readSeq, this.value, this.pid);
             getSender().tell(resp, getSelf());
         } else if (message instanceof PollResponseMessage) {
             PollResponseMessage pollResp = (PollResponseMessage)message;
             // Skips out-dated responses
             if (null != this.quorum && pollResp.ack == this.readSeq) {
-                formLog(true, "vote", pollResp.ack, this.readSeq, getSender().path().name());
                 this.quorum.vote(pollResp.pid, pollResp.seq, pollResp.value);
                 if (this.quorum.isDecisive()) {
                     this.value = this.quorum.decideValue();
@@ -157,14 +158,12 @@ public class Process extends UntypedAbstractActor{
 
                     // Continue processing
                     if (! this.operations.isEmpty()) {
-                        log("Consuming from read");
                         consumeOperation();
                     }
                 }
             }
         } else if (message instanceof WriteMessage) {
             WriteMessage writeMsg = (WriteMessage)message;
-            formLog(true, "notify", writeMsg.seq, this.readSeq, getSender().path().name());
 
             if (this.isFailed) {
                 return;
@@ -178,28 +177,26 @@ public class Process extends UntypedAbstractActor{
 
         } else if (message instanceof WriteResponseMessage) {
             WriteResponseMessage writeResp = (WriteResponseMessage)message;
-            log("In writeresponse " + (null != this.quorum ? this.quorum.originalSeq : "") + " " + this.readSeq + " " + writeResp.seq);
             // Skips out-dated responses
             if (null != this.quorum && writeResp.seq== this.readSeq) {
-                formLog(true, "writeack", writeResp.seq, this.readSeq, getSender().path().name());
                 this.quorum.vote(writeResp.pid, writeResp.seq, writeResp.value);
                 if (this.quorum.isDecisive()) {
                     this.value = this.quorum.decideValue();
                     this.readSeq = this.quorum.decideSeq();
                     this.quorum = null;
                     formLog(true, "writeset", writeResp.seq, this.readSeq, getSelf().path().name());
-
                     // Continue processing
                     if (! this.operations.isEmpty()) {
-                        log("Consuming from write");
                         consumeOperation();
                     }
                 }
+            } else {
+                log("Could not handle WriteResponse, what's this?");
+                log(writeResp.seq + " " + writeResp.value + ", compared to : "+this.readSeq + " but my quorum is " + (null != this.quorum ? this.quorum.originalSeq : "null"));
             }
 
         } else if (message instanceof LaunchMessage) {
             this.isFailed = ((LaunchMessage)message).failed;
-            log("Launched! Fail: " + this.isFailed);
             if (! this.isFailed) {
                 this.operations = new ArrayDeque<>();
                 this.run();
