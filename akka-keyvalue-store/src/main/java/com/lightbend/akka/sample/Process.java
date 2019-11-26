@@ -70,9 +70,14 @@ public class Process extends UntypedAbstractActor{
 	    if (null != op) {
 	        this.operations.removeFirst();
             switch (op.opName) {
-                case "write":
-                    // TODO implement
-                case "read":
+                case "put":
+                    this.get();
+                    this.operations.addFirst(new Operation("putAfterGet", op.operand));
+                    break;
+                case "putAfterGet":
+                    this.put(op.operand);
+                    break;
+                case "get":
                 default:
                     this.get();
             }
@@ -94,7 +99,19 @@ public class Process extends UntypedAbstractActor{
         }
     }
 
-    private void put(int value) {
+    /**
+     * This method is guaranteed to be run after a get() has just been performed
+     * @param newValue
+     */
+    private void put(int newValue) {
+        WriteMessage notice = new WriteMessage(this.pid, this.readSeq, newValue);
+        this.quorum = new Quorum(this.pid, this.readSeq);
+        this.quorum.vote(this.pid, this.readSeq, newValue);
+        formLog(true, "startwrite", -1, this.readSeq, getSelf().path().name());
+        for (ActorRef ref : this.savedList) {
+            if (ref != getSelf())
+                ref.tell(notice, getSelf());
+        }
     }
 
     /**
@@ -103,7 +120,7 @@ public class Process extends UntypedAbstractActor{
      */
     private void run() {
         log("Running boy "+this.pid);
-        this.operations.add(new Operation("read", -1 /* unused */));
+        this.operations.add(new Operation("put", 100 + this.pid /* unused */));
         this.consumeOperation();
     }
 
@@ -140,10 +157,46 @@ public class Process extends UntypedAbstractActor{
 
                     // Continue processing
                     if (! this.operations.isEmpty()) {
+                        log("Consuming from read");
                         consumeOperation();
                     }
                 }
             }
+        } else if (message instanceof WriteMessage) {
+            WriteMessage writeMsg = (WriteMessage)message;
+            formLog(true, "notify", writeMsg.seq, this.readSeq, getSender().path().name());
+
+            if (this.isFailed) {
+                return;
+            }
+            if (writeMsg.seq > this.readSeq || (this.readSeq == writeMsg.seq && writeMsg.pid > this.pid)) {
+                this.readSeq = writeMsg.seq;
+                this.value = writeMsg.value;
+            }
+            WriteResponseMessage resp = new WriteResponseMessage(this.pid, writeMsg.seq, writeMsg.value);
+            getSender().tell(resp, getSelf());
+
+        } else if (message instanceof WriteResponseMessage) {
+            WriteResponseMessage writeResp = (WriteResponseMessage)message;
+            log("In writeresponse " + (null != this.quorum ? this.quorum.originalSeq : "") + " " + this.readSeq + " " + writeResp.seq);
+            // Skips out-dated responses
+            if (null != this.quorum && writeResp.seq== this.readSeq) {
+                formLog(true, "writeack", writeResp.seq, this.readSeq, getSender().path().name());
+                this.quorum.vote(writeResp.pid, writeResp.seq, writeResp.value);
+                if (this.quorum.isDecisive()) {
+                    this.value = this.quorum.decideValue();
+                    this.readSeq = this.quorum.decideSeq();
+                    this.quorum = null;
+                    formLog(true, "writeset", writeResp.seq, this.readSeq, getSelf().path().name());
+
+                    // Continue processing
+                    if (! this.operations.isEmpty()) {
+                        log("Consuming from write");
+                        consumeOperation();
+                    }
+                }
+            }
+
         } else if (message instanceof LaunchMessage) {
             this.isFailed = ((LaunchMessage)message).failed;
             log("Launched! Fail: " + this.isFailed);

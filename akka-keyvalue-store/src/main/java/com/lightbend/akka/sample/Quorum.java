@@ -3,7 +3,7 @@ package com.lightbend.akka.sample;
 public class Quorum {
 
     private int pid;
-    private int originalSeq;
+    public int originalSeq;
     //TODO change line below to private, only for outside Logging
     public int voteCount = 0;
     private int bestValue = 0;
