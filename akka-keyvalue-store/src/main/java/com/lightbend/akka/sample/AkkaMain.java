@@ -9,8 +9,9 @@ import java.util.List;
 
 public final class AkkaMain {
     
-    public final static int NumActors = 3;
-    public final static int NumFailed = 1;
+    public final static int NumActors = 10; // N
+    public final static int NumFailed = 4; // f
+    public final static int NumActions = 3; // M
     /** This class shouldn't be instantiated */
     private AkkaMain() {}
 
@@ -42,16 +43,18 @@ public final class AkkaMain {
      * Some will have their fail-flag set, simulating a failed process.
      */
     private static void sendLaunchMessages(List<ActorRef> refList) {
-        Collections.shuffle(refList);
+        //Collections.shuffle(refList);
         int nFailed = 0;
+        int i = 0;
         for (ActorRef ref : refList) {
             boolean failed = false;
-            if (nFailed < NumFailed) {
+            if (nFailed < NumFailed && i > 0) {
                 failed = true;
                 nFailed++;
             }
             LaunchMessage launchMsg = new LaunchMessage(failed);
             ref.tell(launchMsg, ActorRef.noSender());
+            i++;
         } 
     }
 

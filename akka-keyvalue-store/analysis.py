@@ -42,61 +42,101 @@ def import_log(filename) -> DataFrame:
     df['timestamp'] = df['timestamp'] - earliest_timestamp
     return df
 
-def parse_operations(df: DataFrame):
-    # Messages starting a poll
-    pollstarts = df[df['type'] == 'startpoll']
-    fig = go.Figure()
-    legend_read_set = False
-    for i, poll_start in pollstarts.iterrows():
-        poll_end = df[(df['type'] == 'set') & (df['ack'] == poll_start['seq']) & (df['from'] == poll_start['from'])].iloc[0]
-        start = poll_start['timestamp']
+def draw_interval(fig, poll_start, end_tag, legend_set, operation, color='black', opacity=1, mirror=0):
+    start = poll_start['timestamp']
+    start_seq = poll_start['seq']
+    start_val = poll_start['value']
+    #start_tuple = f'({start_seq}, {start_val})'
+    start_tuple = ''
+    text_pos='bottom left' if operation=='Put' else 'top left'
+    try:
+        poll_end = df[(df['type'] == end_tag) & (df['ack'] == poll_start['seq']) & (df['from'] == poll_start['from'])].iloc[0]
         end = poll_end['timestamp']
-        start_tuple = f'({poll_start["seq"]}, ?)'
         end_seq = poll_end['seq']
         end_val = poll_end['value']
         end_tuple = f'({end_seq}, {end_val})'
-        fig.add_trace(
-               go.Scatter(
-                   x=[start, end], 
-                   y=[poll_start['from']]*2,  # extracting i
-                   line=dict(color='black'),
-                   showlegend=not legend_read_set,
-                   name='Read',
-                   mode='lines+text',
-                   textposition='top center',
-                   text=[start_tuple, end_tuple]
-                   ))
-        legend_read_set = True
-    writestarts = df[df['type'] == 'startwrite']
-    legend_write_set = False
-    for i, write_start in writestarts.iterrows():
-        try:
-            write_end = df[(df['type'] == 'writeset') & (df['ack'] == write_start['seq']) & (df['from'] == write_start['from'])].iloc[0]
-        except:
-            print('Could not finish write, ')
-            print(write_start)
-            continue
-        start = write_start['timestamp']
-        end = write_end['timestamp']
-        start_tuple = f'({write_start["seq"]}, !)'
-        end_seq = write_end['seq']
-        end_val = write_end['value']
-        end_tuple = f'({end_seq}, {end_val})'
-        fig.add_trace(
-               go.Scatter(
-                   x=[start, end], 
-                   y=[write_start['from']]*2,  # extracting i
-                   line=dict(color='red'),
-                   text=[start_tuple, end_tuple],
-                   textposition='bottom center',
-                   mode='lines+text',
-                   showlegend=not legend_write_set,
-                   name='Write'
-                   ))
-        legend_write_set = True
-        
+    except:
+        end = start + 1
+        end_tuple = f'({poll_start["seq"]}, ?)'
+    if mirror:
+        scatter_x = [end, end, start, start, end, end]
+        l = poll_start['from']
+        d = min(0.5, abs(mirror))
+        scatter_y = [l-d, l+d, l+d, l-d, l-d, l+d]
+    else:
+        scatter_x = [start, end]
+        scatter_y = [poll_start['from']]*2
+
+    fig.add_trace(
+           go.Scatter(
+               x=scatter_x,
+               y=scatter_y,
+               opacity=opacity,
+               line=dict(color=color),
+               showlegend=not legend_set,
+               name=operation
+               #mode='lines+text',
+               #textposition=text_pos,
+               #text=[end_tuple, None, start_tuple]
+               ))
+    #fig.add_annotation(
+    #    go.layout.Annotation(
+    #            x=start,
+    #            y=poll_start['from'],
+    #            text=start_tuple,
+    #            xref="x",
+    #            yref="y",
+    #            showarrow=True,
+    #            arrowhead=7,
+    #            ax=20,
+    #            ay=0)
+    #)
+    fig.add_annotation(
+        go.layout.Annotation(
+                x=end,
+                y=poll_start['from'],
+                text=end_tuple,
+                xref="x",
+                yref="y",
+                showarrow=True,
+                arrowhead=7,
+                ax=-30,
+                ay=-20)
+    )
+
+
+
+
+def parse_operations(df: DataFrame):
+    fig = go.Figure()
+    # Messages starting a poll
+    #pollstarts = df[df['type'] == 'startpoll']
+    #legend_read_set = False
+    #for i, poll_start in pollstarts.iterrows():
+    #    draw_interval(fig, poll_start, 'set', legend_read_set, text='Internal read', color='blue', opacity=0.9)
+    #    legend_read_set = True
+    #writestarts = df[df['type'] == 'startwrite']
+    #legend_write_set = False
+    #for i, write_start in writestarts.iterrows():
+    #    draw_interval(fig, write_start, 'writeset', legend_write_set, 'Internal write', color='orange', opacity=0.9)
+    #    legend_write_set = True
+
+    # Now draw the whole Get/Put operations
+    getstarts = df[df['type'] == 'getstart']
+    legend_get_set = False
+    for i, get_start in getstarts.iterrows():
+        draw_interval(fig, get_start, 'getstop', legend_get_set, 'Get', color='green', mirror=0.2)
+        legend_get_set = True
+
+    putstarts = df[df['type'] == 'putstart']
+    legend_put_set = False
+    for i, put_start in putstarts.iterrows():
+        draw_interval(fig, put_start, 'putstop', legend_put_set, 'Put', color='red', mirror=0.2)
+        legend_put_set = True
+
+
     fig.update_layout(
-        title = 'Process activity for get and put operations (N: 3, f: 1)',
+        title = 'Process activity for get and put operations (N: 10, f: 4, M: 3)',
         xaxis_title = 'Time (ms)',
         yaxis_title = 'Process identifier (i)',
         xaxis = dict(
@@ -107,7 +147,7 @@ def parse_operations(df: DataFrame):
             tick0 = 0,
             dtick = 1
             ))
-    fig.update_xaxes(tickvals=[i for i in range(int(df['timestamp'].max()))])
+    fig.update_xaxes(tickvals=[i for i in np.arange(0, int(df['timestamp'].max()), 10)])
     fig.show()
 
 

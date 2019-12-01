@@ -35,7 +35,12 @@ public class Process extends UntypedAbstractActor{
 
     private int value = 0;
     private int readSeq= 0;
-    private int writeSeq = 0;
+
+    // Extraneous visualization variables, TODO remove
+    private boolean isDoingPut;
+    private boolean isDoingGet;
+    private int iPut = 0;
+    private int iGet = 0;
 
 	// Static function creating actor
 	public static Props createActor() {
@@ -50,11 +55,12 @@ public class Process extends UntypedAbstractActor{
         logger.info("["+getSelf().path().name()+"] rec msg from ["+ getSender().path().name() +"]:\n\t["+msg+"]");
     }
 
-    private void formLog(boolean sending, String type, int ack, int seq, String otherActor) {
+    private void formLog(String type, int ack, int seq, int value, String otherActor) {
+	    long nano = System.nanoTime();
         String ackStr = ack < 0 ? "" : String.valueOf(ack);
         String[] actors = new String[2];
         // Determining actor order in the log string
-        if (sending) {
+        if (true) {
             actors[0] = getSelf().path().name();
             actors[1] = otherActor;
         } else {
@@ -62,7 +68,7 @@ public class Process extends UntypedAbstractActor{
             actors[1] = getSelf().path().name();
         }
 
-        logger.info("###"+actors[0]+","+actors[1]+","+type+","+ackStr+","+seq+","+this.value+","+System.nanoTime());
+        logger.info("###"+actors[0]+","+actors[1]+","+type+","+ackStr+","+seq+","+value+","+nano);
     }
 
     private void consumeOperation() {
@@ -71,17 +77,24 @@ public class Process extends UntypedAbstractActor{
 	        this.operations.removeFirst();
             switch (op.opName) {
                 case "put":
+                    formLog("putstart", this.readSeq, this.iPut, this.value, getSelf().path().name());
+                    this.isDoingPut = true;
                     this.operations.addFirst(new Operation("guaranteedWrite", op.operand));
                     this.get();
                     break;
                 case "guaranteedWrite":
+                    this.readSeq++;
+                    this.value = op.operand;
                     this.put(op.operand);
                     break;
                 case "get":
-                    this.operations.addFirst(new Operation("notifyWrite", op.operand));
+                    formLog("getstart", this.readSeq, this.iGet, this.value, getSelf().path().name());
+                    this.isDoingGet = true;
+                    this.operations.addFirst(new Operation("notifyWrite", -1));
                     this.get();
                     break;
                 case "notifyWrite":
+                    this.readSeq++;
                     this.put(this.value);
                     break;
                 default:
@@ -91,14 +104,11 @@ public class Process extends UntypedAbstractActor{
     }
 
     private void get() {
-        this.readSeq++;
-
         String name = "p" + this.pid + "q" + this.readSeq;
 
         PollMessage poll = new PollMessage(this.readSeq);
         this.quorum = new Quorum(this.pid, this.readSeq);
         this.quorum.vote(this.pid, this.readSeq, this.value);
-        formLog(true, "startpoll", -1, this.readSeq, getSelf().path().name());
         for (ActorRef ref : this.savedList) {
             if (ref != getSelf())
                 ref.tell(poll, getSelf());
@@ -111,9 +121,8 @@ public class Process extends UntypedAbstractActor{
      */
     private void put(int newValue) {
         WriteMessage notice = new WriteMessage(this.pid, this.readSeq, newValue);
-        this.quorum = new Quorum(this.pid, this.readSeq);
+        this.quorum = new Quorum(this.pid, this.readSeq, newValue);
         this.quorum.vote(this.pid, this.readSeq, newValue);
-        formLog(true, "startwrite", -1, this.readSeq, getSelf().path().name());
         for (ActorRef ref : this.savedList) {
             if (ref != getSelf())
                 ref.tell(notice, getSelf());
@@ -125,8 +134,12 @@ public class Process extends UntypedAbstractActor{
      * Will call multiple read/write operations in iterations.
      */
     private void run() {
-        this.operations.add(new Operation("put", 100 + this.pid));
-        this.operations.add(new Operation("get", -1 /* unused */));
+        for (int i = 0; i < AkkaMain.NumActions; i++) {
+            this.operations.add(new Operation("put", (i*100) + this.pid));
+        }
+        for (int i = 0; i < AkkaMain.NumActions; i++) {
+            this.operations.add(new Operation("get", -1 /* unused */));
+        }
         this.consumeOperation();
     }
 
@@ -148,13 +161,12 @@ public class Process extends UntypedAbstractActor{
         } else if (message instanceof PollResponseMessage) {
             PollResponseMessage pollResp = (PollResponseMessage)message;
             // Skips out-dated responses
-            if (null != this.quorum && pollResp.ack == this.readSeq) {
+            if (null != this.quorum && pollResp.ack == this.quorum.originalSeq) {
                 this.quorum.vote(pollResp.pid, pollResp.seq, pollResp.value);
                 if (this.quorum.isDecisive()) {
                     this.value = this.quorum.decideValue();
                     this.readSeq = this.quorum.decideSeq();
                     this.quorum = null;
-                    formLog(true, "set", pollResp.ack, this.readSeq, getSelf().path().name());
 
                     // Continue processing
                     if (! this.operations.isEmpty()) {
@@ -165,26 +177,34 @@ public class Process extends UntypedAbstractActor{
         } else if (message instanceof WriteMessage) {
             WriteMessage writeMsg = (WriteMessage)message;
 
-            if (this.isFailed) {
-                return;
-            }
             if (writeMsg.seq > this.readSeq || (this.readSeq == writeMsg.seq && writeMsg.pid > this.pid)) {
                 this.readSeq = writeMsg.seq;
                 this.value = writeMsg.value;
             }
-            WriteResponseMessage resp = new WriteResponseMessage(this.pid, writeMsg.seq, writeMsg.value);
+            WriteResponseMessage resp = new WriteResponseMessage(this.pid, writeMsg.seq, this.readSeq, this.value);
             getSender().tell(resp, getSelf());
 
         } else if (message instanceof WriteResponseMessage) {
             WriteResponseMessage writeResp = (WriteResponseMessage)message;
             // Skips out-dated responses
-            if (null != this.quorum && writeResp.seq== this.readSeq) {
+            if (null != this.quorum && writeResp.ack == this.quorum.originalSeq) {
                 this.quorum.vote(writeResp.pid, writeResp.seq, writeResp.value);
                 if (this.quorum.isDecisive()) {
-                    this.value = this.quorum.decideValue();
-                    this.readSeq = this.quorum.decideSeq();
+                    //this.value = this.quorum.originalValue;
+                    //this.readSeq = this.quorum.decideSeq();
+                    int temp = this.value;
+                    this.value = this.quorum.originalValue;
+                    this.value = temp;
+                    if (this.isDoingGet) {
+                        formLog("getstop", this.iGet, this.readSeq, this.quorum.originalValue, getSelf().path().name());
+                        this.iGet++;
+                        this.isDoingGet = false;
+                    } else if (this.isDoingPut) {
+                        formLog("putstop", this.iPut, this.readSeq, this.quorum.originalValue, getSelf().path().name());
+                        this.iPut++;
+                        this.isDoingPut = false;
+                    }
                     this.quorum = null;
-                    formLog(true, "writeset", writeResp.seq, this.readSeq, getSelf().path().name());
                     // Continue processing
                     if (! this.operations.isEmpty()) {
                         consumeOperation();

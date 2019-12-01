@@ -4,6 +4,7 @@ public class Quorum {
 
     private int pid;
     public int originalSeq;
+    public int originalValue;
     //TODO change line below to private, only for outside Logging
     public int voteCount = 0;
     private int bestValue = 0;
@@ -12,6 +13,12 @@ public class Quorum {
     public Quorum(int pid, int originalSeq) {
         this.pid = pid;
         this.originalSeq = originalSeq;
+        this.originalValue = -1;
+    }
+    public Quorum(int pid, int originalSeq, int originalValue) {
+        this.pid = pid;
+        this.originalSeq = originalSeq;
+        this.originalValue = originalValue;
     }
 
     public int getPid() {
