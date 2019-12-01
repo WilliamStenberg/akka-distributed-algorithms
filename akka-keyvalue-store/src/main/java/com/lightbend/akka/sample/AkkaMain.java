@@ -9,9 +9,9 @@ import java.util.List;
 
 public final class AkkaMain {
     
-    public final static int NumActors = 10; // N
-    public final static int NumFailed = 4; // f
-    public final static int NumActions = 3; // M
+    public final static int NumActors = 100; // N
+    public final static int NumFailed = 49; // f
+    public final static int NumActions = 100; // M
     /** This class shouldn't be instantiated */
     private AkkaMain() {}
 
@@ -80,7 +80,7 @@ public final class AkkaMain {
         // Prompting actors to start the circus
         sendLaunchMessages(refList);
 
-        //pause("Press ENTER to exit");
+        pause("Press ENTER to exit");
         system.terminate();
     }
 }

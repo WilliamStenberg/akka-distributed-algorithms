@@ -36,12 +36,6 @@ public class Process extends UntypedAbstractActor{
     private int value = 0;
     private int readSeq= 0;
 
-    // Extraneous visualization variables, TODO remove
-    private boolean isDoingPut;
-    private boolean isDoingGet;
-    private int iPut = 0;
-    private int iGet = 0;
-
 	// Static function creating actor
 	public static Props createActor() {
 		return Props.create(Process.class, Process::new);
@@ -51,24 +45,12 @@ public class Process extends UntypedAbstractActor{
         return this.pid;
     }
 
-    private void log(String msg) {
-        logger.info("["+getSelf().path().name()+"] rec msg from ["+ getSender().path().name() +"]:\n\t["+msg+"]");
-    }
 
     private void formLog(String type, int ack, int seq, int value, String otherActor) {
 	    long nano = System.nanoTime();
         String ackStr = ack < 0 ? "" : String.valueOf(ack);
-        String[] actors = new String[2];
-        // Determining actor order in the log string
-        if (true) {
-            actors[0] = getSelf().path().name();
-            actors[1] = otherActor;
-        } else {
-            actors[0] = otherActor;
-            actors[1] = getSelf().path().name();
-        }
 
-        logger.info("###"+actors[0]+","+actors[1]+","+type+","+ackStr+","+seq+","+value+","+nano);
+        logger.info("###"+getSelf().path().name()+","+otherActor+","+type+","+ackStr+","+seq+","+value+","+nano);
     }
 
     private void consumeOperation() {
@@ -77,8 +59,6 @@ public class Process extends UntypedAbstractActor{
 	        this.operations.removeFirst();
             switch (op.opName) {
                 case "put":
-                    formLog("putstart", this.readSeq, this.iPut, this.value, getSelf().path().name());
-                    this.isDoingPut = true;
                     this.operations.addFirst(new Operation("guaranteedWrite", op.operand));
                     this.get();
                     break;
@@ -88,8 +68,6 @@ public class Process extends UntypedAbstractActor{
                     this.put(op.operand);
                     break;
                 case "get":
-                    formLog("getstart", this.readSeq, this.iGet, this.value, getSelf().path().name());
-                    this.isDoingGet = true;
                     this.operations.addFirst(new Operation("notifyWrite", -1));
                     this.get();
                     break;
@@ -104,8 +82,6 @@ public class Process extends UntypedAbstractActor{
     }
 
     private void get() {
-        String name = "p" + this.pid + "q" + this.readSeq;
-
         PollMessage poll = new PollMessage(this.readSeq);
         this.quorum = new Quorum(this.pid, this.readSeq);
         this.quorum.vote(this.pid, this.readSeq, this.value);
@@ -117,7 +93,6 @@ public class Process extends UntypedAbstractActor{
 
     /**
      * This method is guaranteed to be run after a get() has just been performed
-     * @param newValue
      */
     private void put(int newValue) {
         WriteMessage notice = new WriteMessage(this.pid, this.readSeq, newValue);
@@ -134,8 +109,9 @@ public class Process extends UntypedAbstractActor{
      * Will call multiple read/write operations in iterations.
      */
     private void run() {
+        formLog("startprocess", this.pid, this.pid, this.pid, getSelf().path().name());
         for (int i = 0; i < AkkaMain.NumActions; i++) {
-            this.operations.add(new Operation("put", (i*100) + this.pid));
+            this.operations.add(new Operation("put", ((i+1)*100)));
         }
         for (int i = 0; i < AkkaMain.NumActions; i++) {
             this.operations.add(new Operation("get", -1 /* unused */));
@@ -190,29 +166,19 @@ public class Process extends UntypedAbstractActor{
             if (null != this.quorum && writeResp.ack == this.quorum.originalSeq) {
                 this.quorum.vote(writeResp.pid, writeResp.seq, writeResp.value);
                 if (this.quorum.isDecisive()) {
-                    //this.value = this.quorum.originalValue;
-                    //this.readSeq = this.quorum.decideSeq();
                     int temp = this.value;
                     this.value = this.quorum.originalValue;
                     this.value = temp;
-                    if (this.isDoingGet) {
-                        formLog("getstop", this.iGet, this.readSeq, this.quorum.originalValue, getSelf().path().name());
-                        this.iGet++;
-                        this.isDoingGet = false;
-                    } else if (this.isDoingPut) {
-                        formLog("putstop", this.iPut, this.readSeq, this.quorum.originalValue, getSelf().path().name());
-                        this.iPut++;
-                        this.isDoingPut = false;
-                    }
                     this.quorum = null;
                     // Continue processing
                     if (! this.operations.isEmpty()) {
                         consumeOperation();
+                    } else {
+                        formLog("endprocess", this.pid, this.readSeq, this.value, getSelf().path().name());
                     }
                 }
             } else {
-                log("Could not handle WriteResponse, what's this?");
-                log(writeResp.seq + " " + writeResp.value + ", compared to : "+this.readSeq + " but my quorum is " + (null != this.quorum ? this.quorum.originalSeq : "null"));
+                System.err.println("Could not handle WriteResponse, what's this?");
             }
 
         } else if (message instanceof LaunchMessage) {
@@ -222,7 +188,7 @@ public class Process extends UntypedAbstractActor{
                 this.run();
             }
         } else {
-            log("Message unrecognized: " + message.getClass().toString());
+            System.err.println("Message unrecognized: " + message.getClass().toString());
         }
 	}
 

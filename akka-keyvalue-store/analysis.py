@@ -33,7 +33,7 @@ def import_log(filename) -> DataFrame:
                     except:
                         seq[col] = None
                 try:
-                    seq[6] = float(seq[6]) / 1e6  # to ms
+                    seq[6] = float(seq[6]) / 1e6  # nanotime to ms
                 except:
                     seq[6] = None
                 df.loc[i] = seq
@@ -75,68 +75,34 @@ def draw_interval(fig, poll_start, end_tag, legend_set, operation, color='black'
                line=dict(color=color),
                showlegend=not legend_set,
                name=operation
-               #mode='lines+text',
-               #textposition=text_pos,
-               #text=[end_tuple, None, start_tuple]
                ))
     #fig.add_annotation(
     #    go.layout.Annotation(
-    #            x=start,
+    #            x=end,
     #            y=poll_start['from'],
-    #            text=start_tuple,
+    #            text=end_tuple,
     #            xref="x",
     #            yref="y",
     #            showarrow=True,
     #            arrowhead=7,
-    #            ax=20,
-    #            ay=0)
+    #            ax=-30,
+    #            ay=-20)
     #)
-    fig.add_annotation(
-        go.layout.Annotation(
-                x=end,
-                y=poll_start['from'],
-                text=end_tuple,
-                xref="x",
-                yref="y",
-                showarrow=True,
-                arrowhead=7,
-                ax=-30,
-                ay=-20)
-    )
 
 
 
 
 def parse_operations(df: DataFrame):
     fig = go.Figure()
-    # Messages starting a poll
-    #pollstarts = df[df['type'] == 'startpoll']
-    #legend_read_set = False
-    #for i, poll_start in pollstarts.iterrows():
-    #    draw_interval(fig, poll_start, 'set', legend_read_set, text='Internal read', color='blue', opacity=0.9)
-    #    legend_read_set = True
-    #writestarts = df[df['type'] == 'startwrite']
-    #legend_write_set = False
-    #for i, write_start in writestarts.iterrows():
-    #    draw_interval(fig, write_start, 'writeset', legend_write_set, 'Internal write', color='orange', opacity=0.9)
-    #    legend_write_set = True
-
-    # Now draw the whole Get/Put operations
-    getstarts = df[df['type'] == 'getstart']
-    legend_get_set = False
+    getstarts = df[df['type'] == 'startprocess']
+    legend_set = False
     for i, get_start in getstarts.iterrows():
-        draw_interval(fig, get_start, 'getstop', legend_get_set, 'Get', color='green', mirror=0.2)
-        legend_get_set = True
-
-    putstarts = df[df['type'] == 'putstart']
-    legend_put_set = False
-    for i, put_start in putstarts.iterrows():
-        draw_interval(fig, put_start, 'putstop', legend_put_set, 'Put', color='red', mirror=0.2)
-        legend_put_set = True
+        draw_interval(fig, get_start, 'endprocess', legend_set, 'Get', color='purple', mirror=0.3)
+        legend_set = True
 
 
     fig.update_layout(
-        title = 'Process activity for get and put operations (N: 10, f: 4, M: 3)',
+        title = 'Process lifespans (N: 10, f: 4, M: 3)',
         xaxis_title = 'Time (ms)',
         yaxis_title = 'Process identifier (i)',
         xaxis = dict(
@@ -150,8 +116,19 @@ def parse_operations(df: DataFrame):
     fig.update_xaxes(tickvals=[i for i in np.arange(0, int(df['timestamp'].max()), 10)])
     fig.show()
 
+def harvest(df: DataFrame):
+    N = len(df.groupby('from'))
+    N = 10 if N == 6 else 100 if N == 51 else 3
+    f = (N / 2) - 1 if N % 2 == 0 else N//2
+    M = df['value'].max() // 100
+    latency = df['timestamp'].max()
+
+    rowdf = DataFrame([[N, f, M, latency]])
+    with open('latencies.csv', 'a') as f:
+        rowdf.to_csv(f, header=False)
 
 df = import_log('log.txt') 
-parse_operations(df)
+#parse_operations(df)
+harvest(df)
 
 
