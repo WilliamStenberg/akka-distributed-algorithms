@@ -1,7 +1,4 @@
 package com.lightbend.akka.sample;
-import akka.actor.ActorRef;
-
-import java.util.List;
 
 public class WriteMessage {
     public final int seq;

@@ -4,14 +4,13 @@ import akka.actor.ActorSystem;
 import akka.actor.ActorRef;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 
 public final class AkkaMain {
     
-    public final static int NumActors = 100; // N
-    public final static int NumFailed = 49; // f
-    public final static int NumActions = 100; // M
+    public final static int NumActors = 3; // N
+    public final static int NumFailed = 1; // f
+    public final static int NumActions = 3; // M
     /** This class shouldn't be instantiated */
     private AkkaMain() {}
 
@@ -75,12 +74,10 @@ public final class AkkaMain {
         // send the list of references to each actor
         sendListMessages(refList);
 
-        //pause("Press ENTER to continue");
 
         // Prompting actors to start the circus
         sendLaunchMessages(refList);
 
-        pause("Press ENTER to exit");
         system.terminate();
     }
 }

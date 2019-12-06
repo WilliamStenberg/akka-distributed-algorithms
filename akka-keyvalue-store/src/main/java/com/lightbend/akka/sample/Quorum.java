@@ -21,10 +21,6 @@ public class Quorum {
         this.originalValue = originalValue;
     }
 
-    public int getPid() {
-        return this.pid;
-    }
-
     public void vote(int voterid, int seq, int value) {
         this.voteCount++;
         if (seq == this.bestSeq && voterid > this.pid || seq > bestSeq) {

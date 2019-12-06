@@ -13,7 +13,7 @@ import java.lang.System;
 
 public class Process extends UntypedAbstractActor{
 
-    private class Operation {
+    private static class Operation {
         private final String opName;
         private final int operand;
 
@@ -40,11 +40,6 @@ public class Process extends UntypedAbstractActor{
 	public static Props createActor() {
 		return Props.create(Process.class, Process::new);
 	}
-
-    public int getPid() {
-        return this.pid;
-    }
-
 
     private void formLog(String type, int ack, int seq, int value, String otherActor) {
 	    long nano = System.nanoTime();
@@ -111,7 +106,7 @@ public class Process extends UntypedAbstractActor{
     private void run() {
         formLog("startprocess", this.pid, this.pid, this.pid, getSelf().path().name());
         for (int i = 0; i < AkkaMain.NumActions; i++) {
-            this.operations.add(new Operation("put", ((i+1)*100)));
+            this.operations.add(new Operation("put", ((i + 1) * 100)));
         }
         for (int i = 0; i < AkkaMain.NumActions; i++) {
             this.operations.add(new Operation("get", -1 /* unused */));
